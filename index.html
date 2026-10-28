@@ -377,3 +377,93 @@ loop();
 </script>
 </body>
 </html>
+
+const SNOOKER_POINTS = {
+  Red: 1,
+  Yellow: 2,
+  Green: 3,
+  Brown: 4,
+  Blue: 5,
+  Pink: 6,
+  Black: 7
+};
+
+const CLEARANCE_ORDER = [
+  "Yellow", "Green", "Brown",
+  "Blue", "Pink", "Black"
+];
+
+let redsRemain = true;
+let nextShot = "Red";
+let clearanceIndex = 0;
+let playerScore = 0;
+let opponentScore = 0;
+let currentPlayer = 1;
+
+function getRequiredBall() {
+  if (redsRemain) return nextShot;
+
+  return CLEARANCE_ORDER[clearanceIndex] ?? null;
+}
+
+function switchPlayer() {
+  currentPlayer = currentPlayer === 1 ? 2 : 1;
+}
+
+function registerShot(firstHit, pottedBall) {
+  const required = getRequiredBall();
+
+  if (!required) {
+    return "FRAME_COMPLETE";
+  }
+
+  // ต้องโดนลูกที่ถูกต้องก่อน
+  if (firstHit !== required) {
+    const penalty = Math.max(
+      4,
+      SNOOKER_POINTS[firstHit] || 0,
+      SNOOKER_POINTS[required] || 0
+    );
+
+    if (currentPlayer === 1) {
+      opponentScore += penalty;
+    } else {
+      playerScore += penalty;
+    }
+
+    switchPlayer();
+    return "FOUL";
+  }
+
+  // แทงลูกเป้าหมายไม่ลง: เปลี่ยนตา
+  if (pottedBall !== required) {
+    switchPlayer();
+    return "MISS";
+  }
+
+  // ได้คะแนนจากลูกที่ลงอย่างถูกต้อง
+  if (currentPlayer === 1) {
+    playerScore += SNOOKER_POINTS[required];
+  } else {
+    opponentScore += SNOOKER_POINTS[required];
+  }
+
+  if (redsRemain) {
+    if (required === "Red") {
+      nextShot = "Color";
+    } else {
+      nextShot = "Red";
+      redsRemain = falseIfNoReds();
+    }
+  } else {
+    clearanceIndex++;
+  }
+
+  return "LEGAL_POT";
+}
+
+// ให้เกมเรียกฟังก์ชันนี้หลังลูกแดงถูกแทงลง
+function falseIfNoReds() {
+  // เปลี่ยนเป็นการตรวจลูกแดงที่ยัง active ในเกมจริง
+  return true;
+}
