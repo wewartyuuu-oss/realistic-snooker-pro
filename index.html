@@ -1,469 +1,491 @@
+
 <!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Realistic Snooker Pro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Realistic Snooker Pro 3D</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#101713;color:#fff;font-family:Arial,sans-serif;text-align:center}
-header{padding:16px;background:#18241d}
-h1{margin:0;color:#f0d18a;font-size:25px}
-p{color:#c5d0c8}
-.game{width:min(96vw,1000px);margin:18px auto}
-canvas{width:100%;background:#075b3a;border:12px solid #53331e;border-radius:8px;display:block;touch-action:none;cursor:crosshair}
-.controls{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin:16px}
-button{background:#d9b66c;color:#19150c;border:0;border-radius:8px;padding:12px 18px;font-weight:bold}
-input{accent-color:#d9b66c}
-.score{font-size:18px;color:#f0d18a}
-.hint{font-size:14px;padding:0 10px}
+body{margin:0;background:#101713;color:#f5f2e8;font-family:Arial,sans-serif}
+header{padding:12px 16px;background:#17251c;display:flex;justify-content:space-between;align-items:center;gap:10px}
+h1{font-size:21px;color:#e6c56d;margin:0}
+main{max-width:1100px;margin:auto;padding:12px}
+#game{height:min(64vh,600px);min-height:340px;background:#080d09;border-radius:12px;overflow:hidden;touch-action:none}
+#game canvas{display:block;width:100%;height:100%;touch-action:none}
+.panel{background:#1b2a20;border:1px solid #344638;border-radius:12px;padding:14px;margin-top:12px}
+.row{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.score{font-size:28px;color:#e6c56d;font-weight:bold}
+#status{margin-top:12px;background:#101713;padding:12px;border-radius:8px;line-height:1.5}
+button{border:0;border-radius:8px;background:#e6c56d;color:#152016;font-weight:bold;padding:11px 14px}
+small{color:#bfccbf}
 </style>
 </head>
 <body>
 <header>
-<h1>REALISTIC SNOOKER PRO</h1>
-<p>Practice Match · Ronnie O'Sullivan vs Judd Trump</p>
-<div class="score">คะแนนคุณ: <span id="score">0</span> | ลูกที่ลง: <span id="potted">0</span></div>
+  <h1>🎱 Realistic Snooker Pro 3D</h1>
+  <small>3D Table • Animated Player</small>
 </header>
+<main>
+  <div id="game"></div>
+  <div class="panel">
+    <div class="row">
+      <div>ผู้เล่น 1<div id="s0" class="score">0</div></div>
+      <div>ผู้เล่น 2<div id="s1" class="score">0</div></div>
+      <div>ตาของใคร<div id="turn">ผู้เล่น 1</div></div>
+    </div>
+    <div id="status">กำลังสร้างโต๊ะ 3D...</div>
+    <p><button id="reset">เริ่มเฟรมใหม่</button></p>
+    <small>ลากจากลูกขาวไปในทิศทางที่ต้องการ แล้วปล่อยเพื่อแทง ลากไกลขึ้นเพื่อเพิ่มแรงแทง ตัวผู้เล่นจะขยับตอนแทง</small>
+  </div>
+</main>
 
-<div class="game">
-<canvas id="table" width="1000" height="500"></canvas>
-<div class="controls">
-<label>แรงแทง <input id="power" type="range" min="2" max="20" value="10"></label>
-<button id="shoot">แทงลูก</button>
-<button id="reset">เริ่มใหม่</button>
-<button id="aim">หมุนมุม</button>
-</div>
-<p class="hint">ลากนิ้วหรือเมาส์บนโต๊ะเพื่อเล็ง แล้วกดแทงลูก</p>
-</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 
-<script>
-const canvas=document.getElementById('table');
-const ctx=canvas.getContext('2d');
-const scoreEl=document.getElementById('score');
-const pottedEl=document.getElementById('potted');
-const powerEl=document.getElementById('power');
+const host = document.getElementById('game');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x101713);
+scene.fog = new THREE.Fog(0x101713, 18, 34);
 
-const W=1000,H=500,R=10;
+const camera = new THREE.PerspectiveCamera(
+  42, host.clientWidth / host.clientHeight, 0.1, 100
+);
+camera.position.set(0, 12.5, 13.5);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(host.clientWidth, host.clientHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+host.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xe5f0ff, 0x26301e, 2.1));
+const light = new THREE.DirectionalLight(0xffedce, 3.2);
+light.position.set(-5, 12, 7);
+light.castShadow = true;
+light.shadow.mapSize.set(2048,2048);
+scene.add(light);
+
+const mat=(color,roughness=.65)=>new THREE.MeshStandardMaterial({color,roughness});
+const wood=mat(0x60371e),cloth=mat(0x12613c,.92);
+const railMat=mat(0x174b30),black=mat(0x080a09);
+const ballMaterials={
+ Cue:mat(0xfff7e3,.22),Red:mat(0xc71927,.2),
+ Yellow:mat(0xffd82f,.2),Green:mat(0x168446,.2),
+ Brown:mat(0x754328,.2),Blue:mat(0x2675ed,.2),
+ Pink:mat(0xf28ab6,.2),Black:mat(0x171717,.2)
+};
+const value={Red:1,Yellow:2,Green:3,Brown:4,Blue:5,Pink:6,Black:7};
+const colorOrder=['Yellow','Green','Brown','Blue','Pink','Black'];
+const ballRadius=.19, tableX=16, tableZ=8;
+const innerX=7.35, innerZ=3.35;
 const pockets=[
- [30,30],[W/2,26],[W-30,30],
- [30,H-30],[W/2,H-26],[W-30,H-30]
+ [-7.55,-3.55],[0,-3.55],[7.55,-3.55],
+ [-7.55,3.55],[0,3.55],[7.55,3.55]
 ];
 
-let balls=[],aimAngle=0,score=0,potted=0,dragging=false,aiming=true;
-
-function ball(x,y,color,name=''){
- return {x,y,vx:0,vy:0,color,name,active:true};
+function box(w,h,d,material,x,y,z){
+ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);
+ m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;
+ scene.add(m);return m;
 }
 
-function reset(){
- balls=[
-  ball(220,250,'#fff','White'),
-  ball(720,250,'#f5d21a','Yellow'),
-  ball(720,220,'#1768d2','Blue'),
-  ball(720,280,'#a320c7','Pink'),
-  ball(780,250,'#111','Black'),
-  ball(680,250,'#138b46','Green'),
-  ball(650,250,'#c92b2b','Red')
- ];
+// Room floor
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(200,200),mat(0x172019));
+floor.rotation.x=-Math.PI/2;floor.position.y=-.48;
+floor.receiveShadow=true;scene.add(floor);
 
+// Table body, cloth and rails
+box(16,.55,8,wood,0,-.12,0);
+box(15.5,.12,7.5,cloth,0,.20,0);
+box(16,.30,.36,railMat,0,.34,-3.82);
+box(16,.30,.36,railMat,0,.34,3.82);
+box(.36,.30,7.3,railMat,-7.82,.34,0);
+box(.36,.30,7.3,railMat,7.82,.34,0);
+
+// Six dark pocket openings
+for(const [x,z] of pockets){
+ const hole=new THREE.Mesh(
+  new THREE.CylinderGeometry(.34,.39,.035,32),black
+ );
+ hole.position.set(x,.267,z);scene.add(hole);
+ const rim=new THREE.Mesh(
+  new THREE.TorusGeometry(.34,.045,8,32),wood
+ );
+ rim.rotation.x=Math.PI/2;rim.position.set(x,.30,z);scene.add(rim);
+}
+
+// Baulk line and D
+const lineMat=new THREE.LineBasicMaterial({color:0xe3d8b7});
+function line(points,material=lineMat){
+ const g=new THREE.BufferGeometry().setFromPoints(
+  points.map(p=>new THREE.Vector3(p[0],.273,p[1]))
+ );
+ const m=new THREE.Line(g,material);scene.add(m);return m;
+}
+line([[-4.5,-3.55],[-4.5,3.55]]);
+const dPts=[];
+for(let i=0;i<=48;i++){
+ const a=-Math.PI/2+i*Math.PI/48;
+ dPts.push([-4.5+1.12*Math.cos(a),1.12*Math.sin(a)]);
+}
+line(dPts);
+
+// Spots
+const spots={
+ Yellow:[-4.5,-2.75],Green:[-4.5,2.75],Brown:[-4.5,0],
+ Blue:[0,0],Pink:[2.65,0],Black:[6.5,0]
+};
+for(const [x,z] of Object.values(spots)){
+ const dot=new THREE.Mesh(new THREE.CircleGeometry(.045,16),mat(0xe7d8b3));
+ dot.rotation.x=-Math.PI/2;dot.position.set(x,.276,z);scene.add(dot);
+}
+
+// Simple 3D player: body, head, legs and arms
+const playerGroup=new THREE.Group();
+playerGroup.position.set(-6.9,.27,1.05);
+scene.add(playerGroup);
+const skin=mat(0xc18a64),shirt=mat(0x202a37),trousers=mat(0x171b22);
+function sphere(parent,r,material,pos){
+ const m=new THREE.Mesh(new THREE.SphereGeometry(r,20,14),material);
+ m.position.set(...pos);m.castShadow=true;parent.add(m);return m;
+}
+function limb(parent,a,b,r,material){
+ const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b);
+ const v=B.clone().sub(A);
+ const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,v.length(),12),material);
+ m.position.copy(A.add(B).multiplyScalar(.5));
+ m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),v.normalize());
+ m.castShadow=true;parent.add(m);return m;
+}
+const torso=new THREE.Group();playerGroup.add(torso);
+limb(torso,[0,.7,0],[.35,1.55,0],.23,shirt);
+sphere(torso,.22,skin,[.40,1.72,0]);
+limb(playerGroup,[-.12,.6,-.12],[-.2,.12,-.2],.12,trousers);
+limb(playerGroup,[.18,.6,.12],[.15,.12,.22],.12,trousers);
+const arm=new THREE.Group();arm.position.set(.28,1.25,0);torso.add(arm);
+limb(arm,[0,0,0],[.48,-.38,.12],.085,shirt);
+limb(arm,[.48,-.38,.12],[.75,-.52,.02],.065,skin);
+const secondArm=new THREE.Group();secondArm.position.set(.23,1.2,.15);torso.add(secondArm);
+limb(secondArm,[0,0,0],[.45,-.35,.12],.075,shirt);
+limb(secondArm,[.45,-.35,.12],[.76,-.48,.03],.055,skin);
+
+// Cue stick
+const cueMat=mat(0xc8a16c);
+const cue=new THREE.Mesh(new THREE.CylinderGeometry(.035,.055,4.1,12),cueMat);
+cue.castShadow=true;scene.add(cue);
+const cueTip=new THREE.Mesh(new THREE.CylinderGeometry(.038,.038,.14,12),mat(0x3a3026));
+scene.add(cueTip);
+
+// Game state
+let balls=[],score=[0,0],player=0,phase='reds',reds=15;
+let clearanceIndex=0,aimPoint=null,dragging=false,moving=false;
+let shot=null,gameOver=false,anim=null,last=performance.now();
+const raycaster=new THREE.Raycaster();
+const pointer=new THREE.Vector2();
+const aimPlane=new THREE.Plane(new THREE.Vector3(0,1,0),-.29);
+const aimLine=new THREE.Line(
+ new THREE.BufferGeometry(),
+ new THREE.LineDashedMaterial({color:0xffe6a0,dashSize:.22,gapSize:.13})
+);
+scene.add(aimLine);
+const hitRing=new THREE.Mesh(
+ new THREE.TorusGeometry(.32,.025,8,32),
+ new THREE.MeshBasicMaterial({color:0xffd36a})
+);
+hitRing.rotation.x=Math.PI/2;hitRing.visible=false;scene.add(hitRing);
+
+function makeBall(type,x,z){
+ const mesh=new THREE.Mesh(new THREE.SphereGeometry(ballRadius,28,20),ballMaterials[type]);
+ mesh.position.set(x,.29,z);mesh.castShadow=true;mesh.receiveShadow=true;
+ scene.add(mesh);
+ return {type,x,z,vx:0,vz:0,mesh,active:true};
+}
+function active(type){return balls.filter(b=>b.active&&b.type===type);}
+function cueBall(){return active('Cue')[0];}
+function required(){
+ if(phase==='reds')return 'Red';
+ if(phase==='colors')return 'Color';
+ if(phase==='clearance')return colorOrder[clearanceIndex]||null;
+ return null;
+}
+function label(t){
+ return t==='Color'?'สีใดก็ได้':
+ ({Red:'แดง',Yellow:'เหลือง',Green:'เขียว',Brown:'น้ำตาล',
+ Blue:'น้ำเงิน',Pink:'ชมพู',Black:'ดำ'})[t]||'จบเฟรม';
+}
+function updateStatus(message){
+ document.getElementById('s0').textContent=score[0];
+ document.getElementById('s1').textContent=score[1];
+ document.getElementById('turn').textContent='ผู้เล่น '+(player+1);
+ document.getElementById('status').textContent=
+ `ผู้เล่น ${player+1} • ต้องแทง ${label(required())} — ${message}`;
+}
+function resetGame(){
+ for(const b of balls)scene.remove(b.mesh);
+ balls=[];score=[0,0];player=0;phase='reds';reds=15;
+ clearanceIndex=0;aimPoint=null;dragging=false;moving=false;
+ shot=null;gameOver=false;anim=null;
+ balls.push(makeBall('Cue',-5.55,1.0));
  for(let row=0;row<5;row++){
-  for(let col=0;col<=row;col++){
-   balls.push(ball(
-    580+row*18,
-    250+(col-row/2)*19,
-    '#c92525','Red'
-   ));
+  for(let j=0;j<=row;j++){
+   balls.push(makeBall('Red',3.2+row*.34,(j-row/2)*.37));
   }
  }
-
- score=0;
- potted=0;
- aimAngle=0;
- aiming=true;
- updateScore();
+ for(const [type,p] of Object.entries(spots))
+  balls.push(makeBall(type,p[0],p[1]));
+ playerGroup.position.set(-6.9,.27,1.05);
+ torso.rotation.z=-.08;
+ arm.rotation.z=0;
+ cue.visible=true;cueTip.visible=true;
+ updateStatus('เริ่มเฟรมใหม่ ต้องแทงแดงก่อน');
 }
-
-function updateScore(){
- scoreEl.textContent=score;
- pottedEl.textContent=potted;
+function getAim(e){
+ const r=renderer.domElement.getBoundingClientRect();
+ pointer.x=((e.clientX-r.left)/r.width)*2-1;
+ pointer.y=-((e.clientY-r.top)/r.height)*2+1;
+ raycaster.setFromCamera(pointer,camera);
+ const p=new THREE.Vector3();
+ if(raycaster.ray.intersectPlane(aimPlane,p))return {x:p.x,z:p.z};
+ return null;
 }
-
-function drawTable(){
- ctx.clearRect(0,0,W,H);
- ctx.fillStyle='#075b3a';
- ctx.fillRect(0,0,W,H);
-
- ctx.strokeStyle='#d7bd80';
- ctx.lineWidth=3;
- ctx.strokeRect(40,40,W-80,H-80);
-
- ctx.beginPath();
- ctx.arc(220,H/2,75,-Math.PI/2,Math.PI/2);
- ctx.stroke();
-
- for(const [x,y] of pockets){
-  ctx.beginPath();
-  ctx.fillStyle='#050806';
-  ctx.arc(x,y,21,0,Math.PI*2);
-  ctx.fill();
- }
+function positionCue(){
+ const c=cueBall();
+ if(!c||!aimPoint){cue.visible=false;cueTip.visible=false;return;}
+ const dx=aimPoint.x-c.x,dz=aimPoint.z-c.z;
+ const len=Math.hypot(dx,dz)||1,ux=dx/len,uz=dz/len;
+ const pull=Math.min(1.25,Math.max(0,Math.hypot(dx,dz)*.12));
+ const back=anim?anim.pull:pull;
+ const center=new THREE.Vector3(c.x-ux*(.38+back+1.95),.40,c.z-uz*(.38+back+1.95));
+ const dir=new THREE.Vector3(ux,0,uz);
+ cue.position.copy(center);
+ cue.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir);
+ cueTip.position.set(c.x-ux*(.30+back),.40,c.z-uz*(.30+back));
+ cueTip.quaternion.copy(cue.quaternion);
+ cue.visible=true;cueTip.visible=true;
 }
-
-function drawBall(b){
- if(!b.active)return;
-
- ctx.beginPath();
- ctx.fillStyle=b.color;
- ctx.arc(b.x,b.y,R,0,Math.PI*2);
- ctx.fill();
-
- ctx.beginPath();
- ctx.fillStyle='rgba(255,255,255,.35)';
- ctx.arc(b.x-3,b.y-3,3,0,Math.PI*2);
- ctx.fill();
-}
-
-/* เส้นเล็งยาวและแสดงจุดที่จะชน */
 function drawAim(){
- const white=balls[0];
- if(!white.active)return;
-
- const dx=Math.cos(aimAngle);
- const dy=Math.sin(aimAngle);
-
- const left=40,right=W-40,top=40,bottom=H-40;
- let maxT=Infinity;
-
- if(dx>0)maxT=Math.min(maxT,(right-white.x)/dx);
- if(dx<0)maxT=Math.min(maxT,(left-white.x)/dx);
- if(dy>0)maxT=Math.min(maxT,(bottom-white.y)/dy);
- if(dy<0)maxT=Math.min(maxT,(top-white.y)/dy);
-
- let hit=null;
-
+ if(!aimPoint||moving||gameOver||!cueBall()){
+  aimLine.visible=false;hitRing.visible=false;return;
+ }
+ const c=cueBall(),dx=aimPoint.x-c.x,dz=aimPoint.z-c.z;
+ const len=Math.hypot(dx,dz)||1,ux=dx/len,uz=dz/len;
+ let max=20;
+ if(ux>0)max=Math.min(max,(innerX-c.x)/ux);
+ if(ux<0)max=Math.min(max,(-innerX-c.x)/ux);
+ if(uz>0)max=Math.min(max,(innerZ-c.z)/uz);
+ if(uz<0)max=Math.min(max,(-innerZ-c.z)/uz);
+ let nearest=null,dist=max;
  for(const b of balls){
-  if(!b.active||b===white)continue;
-
-  const ox=b.x-white.x;
-  const oy=b.y-white.y;
-  const t=ox*dx+oy*dy;
-
-  if(t<=0||t>=maxT)continue;
-
-  const distance=Math.abs(ox*dy-oy*dx);
-
-  if(distance<R*2){
-   maxT=t;
-   hit=b;
-  }
+  if(!b.active||b.type==='Cue')continue;
+  const rx=b.x-c.x,rz=b.z-c.z,proj=rx*ux+rz*uz;
+  const perp=Math.abs(rx*uz-rz*ux);
+  if(proj>0&&proj<dist&&perp<ballRadius*2){nearest=b;dist=proj;}
  }
-
- ctx.save();
- ctx.setLineDash([10,7]);
- ctx.strokeStyle='rgba(255,255,255,.95)';
- ctx.lineWidth=3;
- ctx.beginPath();
- ctx.moveTo(white.x,white.y);
- ctx.lineTo(
-  white.x+dx*maxT,
-  white.y+dy*maxT
- );
- ctx.stroke();
- ctx.setLineDash([]);
-
- if(hit){
-  ctx.beginPath();
-  ctx.arc(
-   white.x+dx*maxT,
-   white.y+dy*maxT,
-   R+5,0,Math.PI*2
-  );
-  ctx.strokeStyle='#f4d27a';
-  ctx.lineWidth=2;
-  ctx.stroke();
+ const end=nearest?[nearest.x,nearest.z]:[c.x+ux*max,c.z+uz*max];
+ aimLine.geometry.dispose();
+ aimLine.geometry=new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(c.x,.34,c.z),
+  new THREE.Vector3(end[0],.34,end[1])
+ ]);
+ aimLine.computeLineDistances();aimLine.visible=true;
+ hitRing.visible=!!nearest;
+ if(nearest)hitRing.position.set(nearest.x,.32,nearest.z);
+}
+function syncBall(b){
+ b.mesh.position.set(b.x,.29,b.z);
+ // Roll the sphere as it travels
+ const speed=Math.hypot(b.vx,b.vz);
+ if(speed>.001){
+  b.mesh.rotation.z+=b.vx*.06;
+  b.mesh.rotation.x-=b.vz*.06;
  }
-
- ctx.beginPath();
- ctx.arc(white.x+dx*24,white.y+dy*24,4,0,Math.PI*2);
- ctx.fillStyle='#f4d27a';
- ctx.fill();
- ctx.restore();
 }
-
-function moving(){
- return balls.some(b=>
-  b.active&&Math.hypot(b.vx,b.vy)>.08
- );
+function pocket(b){
+ b.active=false;b.mesh.visible=false;b.vx=b.vz=0;
+ if(shot){
+  if(b.type==='Cue')shot.scratch=true;
+  else shot.potted.push(b.type);
+ }
 }
-
-function render(){
- drawTable();
- for(const b of balls)drawBall(b);
- if(aiming&&!moving())drawAim();
-}
-
-/* ฟิสิกส์ลูกและแก้ระบบลูกลงหลุม */
-function physics(){
+function physics(dt){
+ if(!moving)return;
+ let still=true;
+ const step=Math.min(dt,.035)*60;
  for(const b of balls){
   if(!b.active)continue;
-
-  b.x+=b.vx;
-  b.y+=b.vy;
-  b.vx*=.991;
-  b.vy*=.991;
-
-  if(Math.hypot(b.vx,b.vy)<.08){
-   b.vx=0;
-   b.vy=0;
+  b.x+=b.vx*step;b.z+=b.vz*step;
+  const decay=Math.pow(.986,step);
+  b.vx*=decay;b.vz*=decay;
+  if(Math.hypot(b.vx,b.vz)>.012)still=false;
+  else b.vx=b.vz=0;
+  let dropped=false;
+  for(const [px,pz] of pockets){
+   if(Math.hypot(b.x-px,b.z-pz)<.34){pocket(b);dropped=true;break;}
   }
-
-  // ตรวจหลุมก่อนเด้งออกจากขอบโต๊ะ
-  let fell=false;
-
-  for(const [px,py] of pockets){
-   if(Math.hypot(b.x-px,b.y-py)<27){
-
-    if(b===balls[0]){
-     // ลูกขาวตกหลุม ให้กลับมาเริ่มตำแหน่งใหม่
-     b.x=220;
-     b.y=250;
-     b.vx=0;
-     b.vy=0;
-     score=Math.max(0,score-4);
-    }else{
-     b.active=false;
-     potted++;
-
-     if(b.color==='#c92525')score+=1;
-     else if(b.color==='#f5d21a')score+=2;
-     else if(b.color==='#138b46')score+=3;
-     else if(b.color==='#1768d2')score+=5;
-     else if(b.color==='#a320c7')score+=6;
-     else score+=7;
-    }
-
-    updateScore();
-    fell=true;
-    break;
-   }
-  }
-
-  if(fell)continue;
-
-  // ขอบโต๊ะ
-  if(b.x<R+40){
-   b.x=R+40;
-   b.vx=Math.abs(b.vx)*.8;
-  }
-
-  if(b.x>W-R-40){
-   b.x=W-R-40;
-   b.vx=-Math.abs(b.vx)*.8;
-  }
-
-  if(b.y<R+40){
-   b.y=R+40;
-   b.vy=Math.abs(b.vy)*.8;
-  }
-
-  if(b.y>H-R-40){
-   b.y=H-R-40;
-   b.vy=-Math.abs(b.vy)*.8;
+  if(dropped)continue;
+  if(b.x < -innerX){b.x=-innerX;b.vx=Math.abs(b.vx)*.88;}
+  if(b.x > innerX){b.x=innerX;b.vx=-Math.abs(b.vx)*.88;}
+  if(b.z < -innerZ){b.z=-innerZ;b.vz=Math.abs(b.vz)*.88;}
+  if(b.z > innerZ){b.z=innerZ;b.vz=-Math.abs(b.vz)*.88;}
+ }
+ const live=balls.filter(b=>b.active);
+ for(let i=0;i<live.length;i++)for(let j=i+1;j<live.length;j++){
+  const a=live[i],b=live[j],dx=b.x-a.x,dz=b.z-a.z;
+  const d=Math.hypot(dx,dz),min=ballRadius*2;
+  if(d<=0||d>=min)continue;
+  if(a.type==='Cue'&&shot&&!shot.firstHit)shot.firstHit=b.type;
+  if(b.type==='Cue'&&shot&&!shot.firstHit)shot.firstHit=a.type;
+  const nx=dx/d,nz=dz/d,overlap=min-d;
+  a.x-=nx*overlap/2;a.z-=nz*overlap/2;
+  b.x+=nx*overlap/2;b.z+=nz*overlap/2;
+  const rel=(a.vx-b.vx)*nx+(a.vz-b.vz)*nz;
+  if(rel>0){
+   const impulse=rel*.96;
+   a.vx-=impulse*nx;a.vz-=impulse*nz;
+   b.vx+=impulse*nx;b.vz+=impulse*nz;
   }
  }
-
- // การชนกันของลูก
- for(let i=0;i<balls.length;i++){
-  const a=balls[i];
-  if(!a.active)continue;
-
-  for(let j=i+1;j<balls.length;j++){
-   const b=balls[j];
-   if(!b.active)continue;
-
-   const dx=b.x-a.x;
-   const dy=b.y-a.y;
-   const d=Math.hypot(dx,dy);
-
-   if(d>0&&d<2*R){
-    const nx=dx/d;
-    const ny=dy/d;
-    const rel=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny;
-
-    if(rel>0){
-     a.vx-=rel*nx*.96;
-     a.vy-=rel*ny*.96;
-     b.vx+=rel*nx*.96;
-     b.vy+=rel*ny*.96;
-    }
-
-    const overlap=2*R-d;
-    a.x-=nx*overlap/2;
-    a.y-=ny*overlap/2;
-    b.x+=nx*overlap/2;
-    b.y+=ny*overlap/2;
-   }
-  }
- }
+ for(const b of balls)if(b.active)syncBall(b);
+ if(still){moving=false;finishShot();}
 }
-
-/* คำนวณมุมจากนิ้วหรือเมาส์ */
-function updateAimFromPointer(e){
- const rect=canvas.getBoundingClientRect();
-
- const x=(e.clientX-rect.left)*W/rect.width;
- const y=(e.clientY-rect.top)*H/rect.height;
-
- const white=balls[0];
- aimAngle=Math.atan2(y-white.y,x-white.x);
- aiming=true;
+function respot(type){
+ const b=balls.find(q=>q.type===type&&!q.active);
+ if(!b)return;
+ const [x,z]=spots[type];b.active=true;b.x=x;b.z=z;b.vx=b.vz=0;
+ b.mesh.visible=true;syncBall(b);
 }
-
-/* ลากนิ้วเพื่อเล็ง */
-canvas.addEventListener('pointerdown',e=>{
- if(moving())return;
-
- dragging=true;
-
- if(canvas.setPointerCapture){
-  canvas.setPointerCapture(e.pointerId);
+function respotList(list){
+ for(const t of list)if(t!=='Red'&&t!=='Cue')respot(t);
+}
+function respotCue(){
+ const c=balls.find(b=>b.type==='Cue');
+ if(c){c.active=true;c.x=-5.55;c.z=1;c.vx=c.vz=0;c.mesh.visible=true;syncBall(c);}
+}
+function finishShot(){
+ if(!shot)return;
+ const s=shot;shot=null;
+ const req=s.required,first=s.firstHit;
+ let foul='';
+ if(!first)foul='ไม่โดนลูกใดเลย';
+ else if(req==='Color'&&(first==='Red'||!value[first]))foul='โดนลูกผิดก่อน';
+ else if(req!=='Color'&&first!==req)foul='โดนลูกผิดก่อน';
+ if(s.scratch)foul='ลูกขาวลงหลุม';
+ const wrong=s.potted.some(t=>req==='Color'?t==='Red':t!==req);
+ if(wrong)foul='แทงลูกผิดลงหลุม';
+ const pot=s.potted.find(t=>req==='Color'?t!=='Red':t===req);
+ if(foul){
+  const penalty=Math.max(4,value[first]||0,value[req]||4);
+  score[1-player]+=penalty;respotList(s.potted);
+  if(s.scratch)respotCue();
+  player=1-player;
+  updateStatus(`ฟาวล์: ${foul} คู่แข่งได้ ${penalty} คะแนน`);
+  return;
  }
-
- updateAimFromPointer(e);
-});
-
-canvas.addEventListener('pointermove',e=>{
- if(dragging&&!moving()){
-  updateAimFromPointer(e);
+ if(pot){
+  score[player]+=value[pot];
+  if(pot==='Red'){
+   reds=Math.max(0,reds-1);
+   phase='colors';
+   updateStatus('แทงแดงลง! เลือกแทงสีใดก็ได้');
+   return;
+  }
+  if(req==='Color'){
+   if(reds>0){respot(pot);phase='reds';}
+   else{phase='clearance';clearanceIndex=0;}
+   updateStatus(reds>0?'แทงสีลง วางสีคืนแล้วกลับไปแทงแดง':'เริ่มเก็บสีตามลำดับ');
+   return;
+  }
+  if(phase==='clearance'){
+   clearanceIndex++;
+   if(clearanceIndex>=colorOrder.length){
+    gameOver=true;phase='over';
+    updateStatus(`จบเฟรม! ${score[0]===score[1]?'คะแนนเสมอกัน':`ผู้เล่น ${score[0]>score[1]?1:2} ชนะ`}`);
+    return;
+   }
+   updateStatus(`แทง ${label(pot)} ลง ได้ ${value[pot]} คะแนน`);
+   return;
+  }
  }
+ // Miss: colors are respotted if they were potted on the wrong visit
+ respotList(s.potted);player=1-player;
+ updateStatus('แทงไม่ลง เปลี่ยนตา');
+}
+function shoot(){
+ const c=cueBall();
+ if(!c||!aimPoint||moving||gameOver)return;
+ const dx=aimPoint.x-c.x,dz=aimPoint.z-c.z;
+ const len=Math.hypot(dx,dz);
+ if(len<.1)return;
+ const power=Math.min(1.25,Math.max(.18,len*.14));
+ shot={required:required(),firstHit:null,potted:[],scratch:false};
+ c.vx=dx/len*power;c.vz=dz/len*power;
+ moving=true;
+ anim={time:0,duration:.48,pull:1.0};
+ updateStatus('นักสนุกเกอร์กำลังแทง...');
+}
+renderer.domElement.addEventListener('pointerdown',e=>{
+ if(moving||gameOver)return;
+ const p=getAim(e);if(!p)return;
+ aimPoint=p;dragging=true;
+ renderer.domElement.setPointerCapture(e.pointerId);
+ drawAim();positionCue();
 });
-
-canvas.addEventListener('pointerup',()=>{
+renderer.domElement.addEventListener('pointermove',e=>{
+ if(!dragging||moving)return;
+ const p=getAim(e);if(!p)return;
+ aimPoint=p;drawAim();positionCue();
+});
+renderer.domElement.addEventListener('pointerup',e=>{
+ if(!dragging)return;
  dragging=false;
+ const p=getAim(e);if(p)aimPoint=p;
+ shoot();drawAim();
 });
-
-canvas.addEventListener('pointercancel',()=>{
- dragging=false;
+renderer.domElement.addEventListener('pointercancel',()=>{
+ dragging=false;aimPoint=null;drawAim();
 });
+document.getElementById('reset').addEventListener('click',resetGame);
 
-/* แทงลูก */
-document.getElementById('shoot').onclick=()=>{
- if(moving()||!balls[0].active)return;
+function animatePlayer(dt){
+ if(!anim){
+  torso.rotation.z=THREE.MathUtils.lerp(torso.rotation.z,-.08,.08);
+  arm.rotation.z=THREE.MathUtils.lerp(arm.rotation.z,0,.08);
+  return;
+ }
+ anim.time+=dt;
+ const t=anim.time/anim.duration;
+ if(t<.45){
+  anim.pull=1.0*(1-t/.45);
+  torso.rotation.z=-.08-.15*(t/.45);
+  arm.rotation.z=-.15*(t/.45);
+ }else{
+  const u=Math.min(1,(t-.45)/.55);
+  anim.pull=-.15*u;
+  torso.rotation.z=-.23+.15*u;
+  arm.rotation.z=-.15+.20*u;
+ }
+ if(t>=1){anim=null;torso.rotation.z=-.08;arm.rotation.z=0;}
+}
+function resize(){
+ const w=host.clientWidth,h=host.clientHeight;
+ camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h);
+}
+window.addEventListener('resize',resize);
 
- const power=Number(powerEl.value);
-
- balls[0].vx=Math.cos(aimAngle)*power;
- balls[0].vy=Math.sin(aimAngle)*power;
-
- aiming=false;
-};
-
-document.getElementById('aim').onclick=()=>{
- aimAngle+=Math.PI/12;
- aiming=true;
-};
-
-document.getElementById('reset').onclick=reset;
-
-function loop(){
- if(moving())physics();
- render();
+function loop(now){
  requestAnimationFrame(loop);
+ const dt=Math.min((now-last)/1000,.04);last=now;
+ physics(dt);
+ animatePlayer(dt);
+ positionCue();drawAim();
+ renderer.render(scene,camera);
 }
-
-reset();
-loop();
+resetGame();
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
-
-const SNOOKER_POINTS = {
-  Red: 1,
-  Yellow: 2,
-  Green: 3,
-  Brown: 4,
-  Blue: 5,
-  Pink: 6,
-  Black: 7
-};
-
-const CLEARANCE_ORDER = [
-  "Yellow", "Green", "Brown",
-  "Blue", "Pink", "Black"
-];
-
-let redsRemain = true;
-let nextShot = "Red";
-let clearanceIndex = 0;
-let playerScore = 0;
-let opponentScore = 0;
-let currentPlayer = 1;
-
-function getRequiredBall() {
-  if (redsRemain) return nextShot;
-
-  return CLEARANCE_ORDER[clearanceIndex] ?? null;
-}
-
-function switchPlayer() {
-  currentPlayer = currentPlayer === 1 ? 2 : 1;
-}
-
-function registerShot(firstHit, pottedBall) {
-  const required = getRequiredBall();
-
-  if (!required) {
-    return "FRAME_COMPLETE";
-  }
-
-  // ต้องโดนลูกที่ถูกต้องก่อน
-  if (firstHit !== required) {
-    const penalty = Math.max(
-      4,
-      SNOOKER_POINTS[firstHit] || 0,
-      SNOOKER_POINTS[required] || 0
-    );
-
-    if (currentPlayer === 1) {
-      opponentScore += penalty;
-    } else {
-      playerScore += penalty;
-    }
-
-    switchPlayer();
-    return "FOUL";
-  }
-
-  // แทงลูกเป้าหมายไม่ลง: เปลี่ยนตา
-  if (pottedBall !== required) {
-    switchPlayer();
-    return "MISS";
-  }
-
-  // ได้คะแนนจากลูกที่ลงอย่างถูกต้อง
-  if (currentPlayer === 1) {
-    playerScore += SNOOKER_POINTS[required];
-  } else {
-    opponentScore += SNOOKER_POINTS[required];
-  }
-
-  if (redsRemain) {
-    if (required === "Red") {
-      nextShot = "Color";
-    } else {
-      nextShot = "Red";
-      redsRemain = falseIfNoReds();
-    }
-  } else {
-    clearanceIndex++;
-  }
-
-  return "LEGAL_POT";
-}
-
-// ให้เกมเรียกฟังก์ชันนี้หลังลูกแดงถูกแทงลง
-function falseIfNoReds() {
-  // เปลี่ยนเป็นการตรวจลูกแดงที่ยัง active ในเกมจริง
-  return true;
-}
