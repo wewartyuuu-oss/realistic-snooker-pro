@@ -1,0 +1,212 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Realistic Snooker Pro</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101713;color:#fff;font-family:Arial,sans-serif;text-align:center}
+header{padding:16px;background:#18241d}
+h1{margin:0;color:#f0d18a;font-size:25px}
+p{color:#c5d0c8}
+.game{width:min(96vw,1000px);margin:18px auto}
+canvas{width:100%;background:#075b3a;border:12px solid #53331e;border-radius:8px;display:block;touch-action:manipulation}
+.controls{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin:16px}
+button{background:#d9b66c;color:#19150c;border:0;border-radius:8px;padding:12px 18px;font-weight:bold}
+input{accent-color:#d9b66c}
+.score{font-size:18px;color:#f0d18a}
+</style>
+</head>
+<body>
+<header>
+<h1>REALISTIC SNOOKER PRO</h1>
+<p>Practice Match · Ronnie O'Sullivan vs Judd Trump</p>
+<div class="score">คะแนนคุณ: <span id="score">0</span> | ลูกที่ลง: <span id="potted">0</span></div>
+</header>
+<div class="game">
+<canvas id="table" width="1000" height="500"></canvas>
+<div class="controls">
+<label>แรงแทง <input id="power" type="range" min="2" max="20" value="10"></label>
+<button id="shoot">แทงลูก</button>
+<button id="reset">เริ่มใหม่</button>
+<button id="aim">เปลี่ยนมุม</button>
+</div>
+<p>แตะบนโต๊ะเพื่อเล็ง แล้วกด “แทงลูก” · ลูกขาวจะถูกยิงไปตามมุมที่เล็ง</p>
+</div>
+<script>
+const canvas=document.getElementById('table');
+const ctx=canvas.getContext('2d');
+const scoreEl=document.getElementById('score');
+const pottedEl=document.getElementById('potted');
+const powerEl=document.getElementById('power');
+
+const W=1000,H=500,R=10;
+const pockets=[
+[15,15],[W/2,12],[W-15,15],
+[15,H-15],[W/2,H-12],[W-15,H-15]
+];
+let balls=[],aimAngle=0,score=0,potted=0,turns=0;
+let aiming=true;
+
+function ball(x,y,color,name=''){
+ return {x,y,vx:0,vy:0,color,name,active:true};
+}
+function reset(){
+ balls=[];
+ balls.push(ball(280,250,'#fff','White'));
+ const colors=[
+  [720,250,'#f5d21a','Yellow'],
+  [720,220,'#1768d2','Blue'],
+  [720,280,'#a320c7','Pink'],
+  [780,250,'#111','Black'],
+  [680,250,'#138b46','Green'],
+  [650,250,'#c92b2b','Red']
+ ];
+ for(const b of colors)balls.push(ball(...b));
+ for(let row=0;row<5;row++){
+  for(let col=0;col<=row;col++){
+   balls.push(ball(
+    580+row*18,
+    250+(col-row/2)*19,
+    '#c92525','Red'
+   ));
+  }
+ }
+ score=0;potted=0;turns=0;aimAngle=0;
+ updateScore();
+}
+function updateScore(){
+ scoreEl.textContent=score;
+ pottedEl.textContent=potted;
+}
+function drawTable(){
+ ctx.clearRect(0,0,W,H);
+ ctx.fillStyle='#075b3a';
+ ctx.fillRect(0,0,W,H);
+ ctx.strokeStyle='#d7bd80';
+ ctx.lineWidth=3;
+ ctx.strokeRect(30,30,W-60,H-60);
+ ctx.beginPath();
+ ctx.arc(220,H/2,75,-Math.PI/2,Math.PI/2);
+ ctx.stroke();
+ for(const [x,y] of pockets){
+  ctx.beginPath();
+  ctx.fillStyle='#050806';
+  ctx.arc(x,y,19,0,Math.PI*2);
+  ctx.fill();
+ }
+}
+function drawBall(b){
+ if(!b.active)return;
+ ctx.beginPath();
+ ctx.fillStyle=b.color;
+ ctx.arc(b.x,b.y,R,0,Math.PI*2);
+ ctx.fill();
+ ctx.beginPath();
+ ctx.fillStyle='rgba(255,255,255,.35)';
+ ctx.arc(b.x-3,b.y-3,3,0,Math.PI*2);
+ ctx.fill();
+}
+function drawAim(){
+ const white=balls[0];
+ if(!white.active)return;
+ ctx.beginPath();
+ ctx.setLineDash([8,8]);
+ ctx.strokeStyle='rgba(255,255,255,.8)';
+ ctx.lineWidth=2;
+ ctx.moveTo(white.x,white.y);
+ ctx.lineTo(white.x+Math.cos(aimAngle)*180,
+            white.y+Math.sin(aimAngle)*180);
+ ctx.stroke();
+ ctx.setLineDash([]);
+}
+function render(){
+ drawTable();
+ for(const b of balls)drawBall(b);
+ if(aiming)drawAim();
+}
+function moving(){
+ return balls.some(b=>b.active&&Math.hypot(b.vx,b.vy)>.08);
+}
+function physics(){
+ for(const b of balls){
+  if(!b.active)continue;
+  b.x+=b.vx;b.y+=b.vy;
+  b.vx*=.991;b.vy*=.991;
+  if(Math.hypot(b.vx,b.vy)<.08)b.vx=b.vy=0;
+
+  if(b.x<R+30){b.x=R+30;b.vx=Math.abs(b.vx)*.8}
+  if(b.x>W-R-30){b.x=W-R-30;b.vx=-Math.abs(b.vx)*.8}
+  if(b.y<R+30){b.y=R+30;b.vy=Math.abs(b.vy)*.8}
+  if(b.y>H-R-30){b.y=H-R-30;b.vy=-Math.abs(b.vy)*.8}
+
+  for(const [px,py] of pockets){
+   if(Math.hypot(b.x-px,b.y-py)<20){
+    if(b===balls[0]){
+     b.x=280;b.y=250;b.vx=b.vy=0;
+     score=Math.max(0,score-4);
+    }else{
+     b.active=false;potted++;
+     score+=b.color==='#c92525'?1:
+       b.color==='#f5d21a'?2:
+       b.color==='#138b46'?3:
+       b.color==='#1768d2'?5:
+       b.color==='#a320c7'?6:7;
+    }
+    updateScore();
+    break;
+   }
+  }
+ }
+ for(let i=0;i<balls.length;i++){
+  const a=balls[i];if(!a.active)continue;
+  for(let j=i+1;j<balls.length;j++){
+   const b=balls[j];if(!b.active)continue;
+   let dx=b.x-a.x,dy=b.y-a.y;
+   let d=Math.hypot(dx,dy);
+   if(d>0&&d<2*R){
+    const nx=dx/d,ny=dy/d;
+    const rel=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny;
+    if(rel>0){
+     a.vx-=rel*nx*.96;a.vy-=rel*ny*.96;
+     b.vx+=rel*nx*.96;b.vy+=rel*ny*.96;
+    }
+    const overlap=2*R-d;
+    a.x-=nx*overlap/2;a.y-=ny*overlap/2;
+    b.x+=nx*overlap/2;b.y+=ny*overlap/2;
+   }
+  }
+ }
+}
+function loop(){
+ if(moving())physics();
+ render();
+ requestAnimationFrame(loop);
+}
+canvas.addEventListener('pointerdown',e=>{
+ const rect=canvas.getBoundingClientRect();
+ const x=(e.clientX-rect.left)*W/rect.width;
+ const y=(e.clientY-rect.top)*H/rect.height;
+ const white=balls[0];
+ aimAngle=Math.atan2(y-white.y,x-white.x);
+ aiming=true;
+});
+document.getElementById('shoot').onclick=()=>{
+ if(moving()||!balls[0].active)return;
+ const power=Number(powerEl.value);
+ balls[0].vx=Math.cos(aimAngle)*power;
+ balls[0].vy=Math.sin(aimAngle)*power;
+ aiming=false;turns++;
+};
+document.getElementById('aim').onclick=()=>{
+ aimAngle+=Math.PI/12;
+ aiming=true;
+};
+document.getElementById('reset').onclick=reset;
+reset();
+loop();
+</script>
+</body>
+</html>
