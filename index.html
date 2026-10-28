@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -12,11 +11,12 @@ header{padding:16px;background:#18241d}
 h1{margin:0;color:#f0d18a;font-size:25px}
 p{color:#c5d0c8}
 .game{width:min(96vw,1000px);margin:18px auto}
-canvas{width:100%;background:#075b3a;border:12px solid #53331e;border-radius:8px;display:block;touch-action:manipulation}
+canvas{width:100%;background:#075b3a;border:12px solid #53331e;border-radius:8px;display:block;touch-action:none;cursor:crosshair}
 .controls{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin:16px}
 button{background:#d9b66c;color:#19150c;border:0;border-radius:8px;padding:12px 18px;font-weight:bold}
 input{accent-color:#d9b66c}
 .score{font-size:18px;color:#f0d18a}
+.hint{font-size:14px;padding:0 10px}
 </style>
 </head>
 <body>
@@ -25,16 +25,18 @@ input{accent-color:#d9b66c}
 <p>Practice Match · Ronnie O'Sullivan vs Judd Trump</p>
 <div class="score">คะแนนคุณ: <span id="score">0</span> | ลูกที่ลง: <span id="potted">0</span></div>
 </header>
+
 <div class="game">
 <canvas id="table" width="1000" height="500"></canvas>
 <div class="controls">
 <label>แรงแทง <input id="power" type="range" min="2" max="20" value="10"></label>
 <button id="shoot">แทงลูก</button>
 <button id="reset">เริ่มใหม่</button>
-<button id="aim">เปลี่ยนมุม</button>
+<button id="aim">หมุนมุม</button>
 </div>
-<p>แตะบนโต๊ะเพื่อเล็ง แล้วกด “แทงลูก” · ลูกขาวจะถูกยิงไปตามมุมที่เล็ง</p>
+<p class="hint">ลากนิ้วหรือเมาส์บนโต๊ะเพื่อเล็ง แล้วกดแทงลูก</p>
 </div>
+
 <script>
 const canvas=document.getElementById('table');
 const ctx=canvas.getContext('2d');
@@ -44,27 +46,27 @@ const powerEl=document.getElementById('power');
 
 const W=1000,H=500,R=10;
 const pockets=[
-[15,15],[W/2,12],[W-15,15],
-[15,H-15],[W/2,H-12],[W-15,H-15]
+ [30,30],[W/2,26],[W-30,30],
+ [30,H-30],[W/2,H-26],[W-30,H-30]
 ];
-let balls=[],aimAngle=0,score=0,potted=0,turns=0;
-let aiming=true;
+
+let balls=[],aimAngle=0,score=0,potted=0,dragging=false,aiming=true;
 
 function ball(x,y,color,name=''){
  return {x,y,vx:0,vy:0,color,name,active:true};
 }
+
 function reset(){
- balls=[];
- balls.push(ball(280,250,'#fff','White'));
- const colors=[
-  [720,250,'#f5d21a','Yellow'],
-  [720,220,'#1768d2','Blue'],
-  [720,280,'#a320c7','Pink'],
-  [780,250,'#111','Black'],
-  [680,250,'#138b46','Green'],
-  [650,250,'#c92b2b','Red']
+ balls=[
+  ball(220,250,'#fff','White'),
+  ball(720,250,'#f5d21a','Yellow'),
+  ball(720,220,'#1768d2','Blue'),
+  ball(720,280,'#a320c7','Pink'),
+  ball(780,250,'#111','Black'),
+  ball(680,250,'#138b46','Green'),
+  ball(650,250,'#c92b2b','Red')
  ];
- for(const b of colors)balls.push(ball(...b));
+
  for(let row=0;row<5;row++){
   for(let col=0;col<=row;col++){
    balls.push(ball(
@@ -74,137 +76,302 @@ function reset(){
    ));
   }
  }
- score=0;potted=0;turns=0;aimAngle=0;
+
+ score=0;
+ potted=0;
+ aimAngle=0;
+ aiming=true;
  updateScore();
 }
+
 function updateScore(){
  scoreEl.textContent=score;
  pottedEl.textContent=potted;
 }
+
 function drawTable(){
  ctx.clearRect(0,0,W,H);
  ctx.fillStyle='#075b3a';
  ctx.fillRect(0,0,W,H);
+
  ctx.strokeStyle='#d7bd80';
  ctx.lineWidth=3;
- ctx.strokeRect(30,30,W-60,H-60);
+ ctx.strokeRect(40,40,W-80,H-80);
+
  ctx.beginPath();
  ctx.arc(220,H/2,75,-Math.PI/2,Math.PI/2);
  ctx.stroke();
+
  for(const [x,y] of pockets){
   ctx.beginPath();
   ctx.fillStyle='#050806';
-  ctx.arc(x,y,19,0,Math.PI*2);
+  ctx.arc(x,y,21,0,Math.PI*2);
   ctx.fill();
  }
 }
+
 function drawBall(b){
  if(!b.active)return;
+
  ctx.beginPath();
  ctx.fillStyle=b.color;
  ctx.arc(b.x,b.y,R,0,Math.PI*2);
  ctx.fill();
+
  ctx.beginPath();
  ctx.fillStyle='rgba(255,255,255,.35)';
  ctx.arc(b.x-3,b.y-3,3,0,Math.PI*2);
  ctx.fill();
 }
+
+/* เส้นเล็งยาวและแสดงจุดที่จะชน */
 function drawAim(){
  const white=balls[0];
  if(!white.active)return;
+
+ const dx=Math.cos(aimAngle);
+ const dy=Math.sin(aimAngle);
+
+ const left=40,right=W-40,top=40,bottom=H-40;
+ let maxT=Infinity;
+
+ if(dx>0)maxT=Math.min(maxT,(right-white.x)/dx);
+ if(dx<0)maxT=Math.min(maxT,(left-white.x)/dx);
+ if(dy>0)maxT=Math.min(maxT,(bottom-white.y)/dy);
+ if(dy<0)maxT=Math.min(maxT,(top-white.y)/dy);
+
+ let hit=null;
+
+ for(const b of balls){
+  if(!b.active||b===white)continue;
+
+  const ox=b.x-white.x;
+  const oy=b.y-white.y;
+  const t=ox*dx+oy*dy;
+
+  if(t<=0||t>=maxT)continue;
+
+  const distance=Math.abs(ox*dy-oy*dx);
+
+  if(distance<R*2){
+   maxT=t;
+   hit=b;
+  }
+ }
+
+ ctx.save();
+ ctx.setLineDash([10,7]);
+ ctx.strokeStyle='rgba(255,255,255,.95)';
+ ctx.lineWidth=3;
  ctx.beginPath();
- ctx.setLineDash([8,8]);
- ctx.strokeStyle='rgba(255,255,255,.8)';
- ctx.lineWidth=2;
  ctx.moveTo(white.x,white.y);
- ctx.lineTo(white.x+Math.cos(aimAngle)*180,
-            white.y+Math.sin(aimAngle)*180);
+ ctx.lineTo(
+  white.x+dx*maxT,
+  white.y+dy*maxT
+ );
  ctx.stroke();
  ctx.setLineDash([]);
+
+ if(hit){
+  ctx.beginPath();
+  ctx.arc(
+   white.x+dx*maxT,
+   white.y+dy*maxT,
+   R+5,0,Math.PI*2
+  );
+  ctx.strokeStyle='#f4d27a';
+  ctx.lineWidth=2;
+  ctx.stroke();
+ }
+
+ ctx.beginPath();
+ ctx.arc(white.x+dx*24,white.y+dy*24,4,0,Math.PI*2);
+ ctx.fillStyle='#f4d27a';
+ ctx.fill();
+ ctx.restore();
 }
+
+function moving(){
+ return balls.some(b=>
+  b.active&&Math.hypot(b.vx,b.vy)>.08
+ );
+}
+
 function render(){
  drawTable();
  for(const b of balls)drawBall(b);
- if(aiming)drawAim();
+ if(aiming&&!moving())drawAim();
 }
-function moving(){
- return balls.some(b=>b.active&&Math.hypot(b.vx,b.vy)>.08);
-}
+
+/* ฟิสิกส์ลูกและแก้ระบบลูกลงหลุม */
 function physics(){
  for(const b of balls){
   if(!b.active)continue;
-  b.x+=b.vx;b.y+=b.vy;
-  b.vx*=.991;b.vy*=.991;
-  if(Math.hypot(b.vx,b.vy)<.08)b.vx=b.vy=0;
 
-  if(b.x<R+30){b.x=R+30;b.vx=Math.abs(b.vx)*.8}
-  if(b.x>W-R-30){b.x=W-R-30;b.vx=-Math.abs(b.vx)*.8}
-  if(b.y<R+30){b.y=R+30;b.vy=Math.abs(b.vy)*.8}
-  if(b.y>H-R-30){b.y=H-R-30;b.vy=-Math.abs(b.vy)*.8}
+  b.x+=b.vx;
+  b.y+=b.vy;
+  b.vx*=.991;
+  b.vy*=.991;
+
+  if(Math.hypot(b.vx,b.vy)<.08){
+   b.vx=0;
+   b.vy=0;
+  }
+
+  // ตรวจหลุมก่อนเด้งออกจากขอบโต๊ะ
+  let fell=false;
 
   for(const [px,py] of pockets){
-   if(Math.hypot(b.x-px,b.y-py)<20){
+   if(Math.hypot(b.x-px,b.y-py)<27){
+
     if(b===balls[0]){
-     b.x=280;b.y=250;b.vx=b.vy=0;
+     // ลูกขาวตกหลุม ให้กลับมาเริ่มตำแหน่งใหม่
+     b.x=220;
+     b.y=250;
+     b.vx=0;
+     b.vy=0;
      score=Math.max(0,score-4);
     }else{
-     b.active=false;potted++;
-     score+=b.color==='#c92525'?1:
-       b.color==='#f5d21a'?2:
-       b.color==='#138b46'?3:
-       b.color==='#1768d2'?5:
-       b.color==='#a320c7'?6:7;
+     b.active=false;
+     potted++;
+
+     if(b.color==='#c92525')score+=1;
+     else if(b.color==='#f5d21a')score+=2;
+     else if(b.color==='#138b46')score+=3;
+     else if(b.color==='#1768d2')score+=5;
+     else if(b.color==='#a320c7')score+=6;
+     else score+=7;
     }
+
     updateScore();
+    fell=true;
     break;
    }
   }
+
+  if(fell)continue;
+
+  // ขอบโต๊ะ
+  if(b.x<R+40){
+   b.x=R+40;
+   b.vx=Math.abs(b.vx)*.8;
+  }
+
+  if(b.x>W-R-40){
+   b.x=W-R-40;
+   b.vx=-Math.abs(b.vx)*.8;
+  }
+
+  if(b.y<R+40){
+   b.y=R+40;
+   b.vy=Math.abs(b.vy)*.8;
+  }
+
+  if(b.y>H-R-40){
+   b.y=H-R-40;
+   b.vy=-Math.abs(b.vy)*.8;
+  }
  }
+
+ // การชนกันของลูก
  for(let i=0;i<balls.length;i++){
-  const a=balls[i];if(!a.active)continue;
+  const a=balls[i];
+  if(!a.active)continue;
+
   for(let j=i+1;j<balls.length;j++){
-   const b=balls[j];if(!b.active)continue;
-   let dx=b.x-a.x,dy=b.y-a.y;
-   let d=Math.hypot(dx,dy);
+   const b=balls[j];
+   if(!b.active)continue;
+
+   const dx=b.x-a.x;
+   const dy=b.y-a.y;
+   const d=Math.hypot(dx,dy);
+
    if(d>0&&d<2*R){
-    const nx=dx/d,ny=dy/d;
+    const nx=dx/d;
+    const ny=dy/d;
     const rel=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny;
+
     if(rel>0){
-     a.vx-=rel*nx*.96;a.vy-=rel*ny*.96;
-     b.vx+=rel*nx*.96;b.vy+=rel*ny*.96;
+     a.vx-=rel*nx*.96;
+     a.vy-=rel*ny*.96;
+     b.vx+=rel*nx*.96;
+     b.vy+=rel*ny*.96;
     }
+
     const overlap=2*R-d;
-    a.x-=nx*overlap/2;a.y-=ny*overlap/2;
-    b.x+=nx*overlap/2;b.y+=ny*overlap/2;
+    a.x-=nx*overlap/2;
+    a.y-=ny*overlap/2;
+    b.x+=nx*overlap/2;
+    b.y+=ny*overlap/2;
    }
   }
  }
 }
+
+/* คำนวณมุมจากนิ้วหรือเมาส์ */
+function updateAimFromPointer(e){
+ const rect=canvas.getBoundingClientRect();
+
+ const x=(e.clientX-rect.left)*W/rect.width;
+ const y=(e.clientY-rect.top)*H/rect.height;
+
+ const white=balls[0];
+ aimAngle=Math.atan2(y-white.y,x-white.x);
+ aiming=true;
+}
+
+/* ลากนิ้วเพื่อเล็ง */
+canvas.addEventListener('pointerdown',e=>{
+ if(moving())return;
+
+ dragging=true;
+
+ if(canvas.setPointerCapture){
+  canvas.setPointerCapture(e.pointerId);
+ }
+
+ updateAimFromPointer(e);
+});
+
+canvas.addEventListener('pointermove',e=>{
+ if(dragging&&!moving()){
+  updateAimFromPointer(e);
+ }
+});
+
+canvas.addEventListener('pointerup',()=>{
+ dragging=false;
+});
+
+canvas.addEventListener('pointercancel',()=>{
+ dragging=false;
+});
+
+/* แทงลูก */
+document.getElementById('shoot').onclick=()=>{
+ if(moving()||!balls[0].active)return;
+
+ const power=Number(powerEl.value);
+
+ balls[0].vx=Math.cos(aimAngle)*power;
+ balls[0].vy=Math.sin(aimAngle)*power;
+
+ aiming=false;
+};
+
+document.getElementById('aim').onclick=()=>{
+ aimAngle+=Math.PI/12;
+ aiming=true;
+};
+
+document.getElementById('reset').onclick=reset;
+
 function loop(){
  if(moving())physics();
  render();
  requestAnimationFrame(loop);
 }
-canvas.addEventListener('pointerdown',e=>{
- const rect=canvas.getBoundingClientRect();
- const x=(e.clientX-rect.left)*W/rect.width;
- const y=(e.clientY-rect.top)*H/rect.height;
- const white=balls[0];
- aimAngle=Math.atan2(y-white.y,x-white.x);
- aiming=true;
-});
-document.getElementById('shoot').onclick=()=>{
- if(moving()||!balls[0].active)return;
- const power=Number(powerEl.value);
- balls[0].vx=Math.cos(aimAngle)*power;
- balls[0].vy=Math.sin(aimAngle)*power;
- aiming=false;turns++;
-};
-document.getElementById('aim').onclick=()=>{
- aimAngle+=Math.PI/12;
- aiming=true;
-};
-document.getElementById('reset').onclick=reset;
+
 reset();
 loop();
 </script>
